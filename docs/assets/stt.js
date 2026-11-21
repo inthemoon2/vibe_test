@@ -7,7 +7,7 @@
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   function webSpeech(o) {
-    let rec = null, want = false, restarts = 0, lastStart = 0;
+    let rec = null, want = false, restarts = 0, lastStart = 0, heard = false;
     function make() {
       rec = new Rec();
       rec.lang = o.lang || 'ko-KR';
@@ -15,6 +15,7 @@
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       rec.onresult = function (e) {
+        heard = true;
         let interim = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i], t = r[0].transcript;
@@ -32,15 +33,16 @@
       rec.onend = function () {
         o.onInterim('');
         if (!want) { o.onState('stopped'); return; }
-        // 침묵이나 시간 제한으로 끊기면 다시 켠다. 너무 자주 끊기면 잠깐 쉬었다가.
-        const quick = Date.now() - lastStart < 1500;
-        restarts = quick ? restarts + 1 : 0;
-        setTimeout(function () { if (want) begin(); }, quick ? Math.min(3000, 300 * restarts) : 100);
+        // 크롬은 한 구절을 말하고 멈추거나, 침묵이 길거나, 시간이 지나면 세션을 끝낸다. 정상이므로 바로 다시 켠다.
+        // 글자 하나 없이 곧바로 끝나는 세션이 이어질 때(마이크 사용 중 등 진짜 고장)만 잠깐씩 쉬었다가 켠다.
+        const failing = !heard && Date.now() - lastStart < 1500;
+        restarts = failing ? restarts + 1 : 0;
+        setTimeout(function () { if (want) begin(); }, failing ? Math.min(3000, 300 * restarts) : 100);
       };
     }
     function begin() {
       if (!rec) make();
-      try { lastStart = Date.now(); rec.start(); o.onState('listening'); }
+      try { lastStart = Date.now(); heard = false; rec.start(); o.onState('listening'); }
       catch (e) { /* 이미 켜져 있으면 무시 */ }
     }
     return {
