@@ -29,7 +29,7 @@
     $('[data-close]', box).focus();
   }
   function aiNote(ready) {
-    return ready === false ? '<div class="banner warn small">AI 키가 아직 설정되지 않았어요. Apps Script 스크립트 속성에 <code>ANTHROPIC_API_KEY</code> 를 넣어야 AI 초안을 만들 수 있어요. (README 참고)</div>' : '';
+    return ready === false ? '<div class="banner warn small">AI 키가 아직 설정되지 않았어요. Apps Script 스크립트 속성에 <code>GEMINI_API_KEY</code>(무료, Google AI Studio에서 발급)를 넣어야 AI 초안을 만들 수 있어요. (README 참고)</div>' : '';
   }
 
   /* ════════════════ 조 구성 ════════════════ */

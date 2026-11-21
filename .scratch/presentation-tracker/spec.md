@@ -83,8 +83,10 @@ Status: ready-for-agent
 - 기존 "세특 재료" 카드는 새 세특 탭에 합친다.
 
 ### 10. AI 연결과 개인정보
-- **Claude API**를 Apps Script `UrlFetchApp`으로 호출. 키는 스크립트 속성 `ANTHROPIC_API_KEY`.
-  호출부는 한 곳에 모아 다른 서비스로 바꿀 수 있게 한다.
+- **Google Gemini API(무료 요금제)**를 Apps Script `UrlFetchApp`으로 호출. 키는 스크립트 속성 `GEMINI_API_KEY`,
+  모델 기본값 `gemini-3.8-flash`. (처음엔 Claude API로 정했으나 비용 때문에 2026-11-21 Gemini 무료로 변경)
+  호출부는 `ai_()` 한 곳에 모았고 Claude도 남겨 둠(`ANTHROPIC_API_KEY` + `AI_PROVIDER=claude`).
+- 무료 요금제는 입력 내용이 Google 서비스 개선에 쓰일 수 있음 → 가명 처리를 유지하고 README에 안내.
 - AI에 보낼 때 **이름·학번을 가명(학생A, 학생B…)으로 치환**하고 결과를 서버에서 실명으로 복원.
   녹음 글 안의 이름도 명단과 대조해 치환.
 - 관리자 화면에 "AI에 보내는 내용" 미리보기를 둔다.

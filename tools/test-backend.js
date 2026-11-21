@@ -12,12 +12,14 @@ const INTEREST = ['간호사', '의사가 꿈', '환경공학', '기후 변화 �
 const realNames = NAMES.slice();
 
 // Claude 응답 흉내: 보낸 내용에 실명이 없는지 검사하고, 학생 코드를 읽어 형식에 맞게 돌려준다
+// Gemini(기본)·Claude 요청 모양을 모두 받는다
 function fakeClaude(body) {
-  const user = body.messages[0].content;
+  const gem = !!body.contents;
+  const user = gem ? body.contents[0].parts[0].text : body.messages[0].content;
   const leaked = realNames.filter(n => user.includes(n) || user.includes(n.slice(1)));
   ok(leaked.length === 0, 'AI로 보낸 내용에 실명이 없어야 함: ' + leaked.join(','));
-  ok(body.model === 'claude-opus-5-5', '모델 기본값');
-  ok(body.output_config && body.output_config.format.type === 'json_schema', '구조화 출력 사용');
+  if (gem) ok(body.generationConfig && body.generationConfig.responseJsonSchema && body.generationConfig.responseMimeType === 'application/json', 'Gemini 구조화 출력 사용');
+  else ok(body.model === 'claude-opus-5-5' && body.output_config.format.type === 'json_schema', 'Claude 구조화 출력 사용');
   const codes = Array.from(new Set(user.match(/학생\d{2}/g) || []));
   let out;
   if (user.includes('모둠으로 나누세요')) {
@@ -30,10 +32,11 @@ function fakeClaude(body) {
   } else if (user.includes('세특 초안')) {
     out = { students: codes.map(c => ({ code: c, text: '모둠 프로젝트에서 데이터 전처리를 맡아 결측치를 처리함. 1차 발표 후 피드백을 반영하여 설명을 개선함.' })) };
   }
+  if (gem) return { code: 200, json: { candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 }, modelVersion: 'gemini-3.8-flash' } };
   return { code: 200, json: { model: body.model, stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(out) }], usage: { input_tokens: 100, output_tokens: 50 } } };
 }
 
-const gas = createGas({ props: { ADMIN_PASSWORD: 'teach', ANTHROPIC_API_KEY: 'test-key' }, onFetch: fakeClaude });
+const gas = createGas({ props: { ADMIN_PASSWORD: 'teach', GEMINI_API_KEY: 'test-key' }, onFetch: fakeClaude });
 const { call } = gas;
 
 try {
@@ -70,6 +73,8 @@ try {
   ok(allPlaced.length === 12 && new Set(allPlaced).size === 12, '모두 한 번씩 배치: ' + allPlaced.length);
   ok(f.draft.groups.every(g => g.sids.length <= 5), '모든 묶음 5명 이하');
   ok(f.draft.unclear.length === 1, '불명확 표시');
+  const fl = gas.fetchLog[0];
+  ok(/models\/gemini-3\.8-flash:generateContent$/.test(fl.url) && fl.headers['x-goog-api-key'] === 'test-key', 'Gemini 주소·키 헤더');
   // 교사 조정: 3개 묶음 4명씩
   const groups = [{ name: '의료·보건', sids: [sids[0], sids[1], sids[9], sids[7]] }, { name: '환경·에너지', sids: [sids[2], sids[3], sids[10], sids[8]] }, { name: '교육·게임', sids: [sids[4], sids[5], sids[6], sids[11]] }];
   expectFail(call('saveGroups', { cls: 3, groups: [{ name: 'x', sids: sids.slice(0, 6) }] }, admin), 'TOO_MANY', '6명 묶음 거부');
@@ -172,6 +177,17 @@ try {
   must(call('adminTeam', { tid }, admin), '채점');
   must(call('scoreTable', {}, admin), '채점표');
   must(call('rosterList', {}, admin), '명단 목록');
+
+  console.log('I. AI 제공자 전환 · 오류');
+  delete gas.props.GEMINI_API_KEY;
+  expectFail(call('aiSeteuk', { tid }, admin), 'NO_AI_KEY', '키 없으면 안내');
+  ok(must(call('seteukList', {}, admin), '키 없음 목록').aiReady === false, 'aiReady false');
+  gas.props.ANTHROPIC_API_KEY = 'claude-key';
+  must(call('aiSeteuk', { tid }, admin), 'Claude 로 전환');
+  ok(gas.fetchLog[gas.fetchLog.length - 1].url.indexOf('anthropic.com') > 0, 'Claude 주소 사용');
+  gas.props.GEMINI_API_KEY = 'test-key';
+  must(call('aiSeteuk', { tid }, admin), '두 키 모두 있으면 Gemini 우선');
+  ok(gas.fetchLog[gas.fetchLog.length - 1].url.indexOf('generativelanguage') > 0, 'Gemini 우선');
 } catch (e) { if (e.message !== 'stop') { fails++; console.log(e.stack); } }
 
 console.log('\n통과 ' + passes + ' / 실패 ' + fails);

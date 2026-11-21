@@ -12,7 +12,7 @@ const WEB = path.join(__dirname, '..', 'docs');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 function fakeClaude(body) {
-  const user = body.messages[0].content, codes = Array.from(new Set(user.match(/학생\d{2}/g) || []));
+  const gem = !!body.contents, user = gem ? body.contents[0].parts[0].text : body.messages[0].content, codes = Array.from(new Set(user.match(/학생\d{2}/g) || []));
   let out;
   if (user.includes('모둠으로 나누세요')) {
     const k = Number((user.match(/정확히 (\d+)개 모둠/) || [])[1] || 1), names = ['의료·보건', '환경·에너지', '교육', '게임·콘텐츠', '경제·금융', '공학·기술', '문화·예술'];
@@ -29,10 +29,11 @@ function fakeClaude(body) {
     const team = codes.filter(c => user.includes('### ' + c));
     out = { students: team.map(c => ({ code: c, text: '사회문제 해결 기계학습 프로젝트에서 데이터 엔지니어를 맡아 공공데이터의 결측치와 이상치를 처리하는 과정을 주도함. 1차 발표 후 전처리 근거를 구체화하라는 피드백을 받고, 2차 발표에서 처리 전후의 분포를 그래프로 비교하여 설명하는 등 피드백을 적극 반영하는 모습을 보임.' })) };
   }
+  if (gem) return { code: 200, json: { candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 1200, candidatesTokenCount: 400 } } };
   return { code: 200, json: { model: body.model, stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(out) }], usage: { input_tokens: 1200, output_tokens: 400 } } };
 }
 
-const gas = createGas({ props: { ADMIN_PASSWORD: 'teach', ANTHROPIC_API_KEY: 'dev-fake' }, onFetch: fakeClaude });
+const gas = createGas({ props: { ADMIN_PASSWORD: 'teach', GEMINI_API_KEY: 'dev-fake' }, onFetch: fakeClaude });
 // 시연용 명단
 (function seed() {
   const tok = gas.call('adminLogin', { pw: 'teach' }).data.token;

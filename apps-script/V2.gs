@@ -5,7 +5,7 @@
  *   B. 관심 분야 입력 → AI 조 편성안 → 교사 조정 · 공개 → 역할 선택 → 조 확정 · 학생 이동
  *   C. 발표 기록(실시간 STT 결과 저장)
  *   D. AI 초안 3단계: 1차 피드백 정리 → 2차 변화 서술 → 세특
- *   E. Claude API 호출 · 가명 처리
+ *   E. AI 호출(Gemini 또는 Claude) · 가명 처리
  *
  * 이 파일의 맨 위(함수 밖)에서는 Code.gs 의 이름을 쓰지 않는다. 파일 실행 순서가 정해져 있지 않기 때문이다.
  */
@@ -238,7 +238,7 @@ function formation_(p) {
   stud.forEach(function (s) { const c = String(s['반']); classes[c] = classes[c] || { cls: c, n: 0, interest: 0 }; classes[c].n++; if (String(s['관심분야']).trim()) classes[c].interest++; });
   const list = Object.keys(classes).sort(function (a, b) { return Number(a) - Number(b); }).map(function (c) { const o = classes[c]; o.stage = states[c] ? String(states[c]['단계'] || '') : ''; return o; });
   const cls = p.cls ? String(parseInt(p.cls, 10)) : (list[0] ? list[0].cls : '');
-  const out = { classes: list, cls: cls, stages: V2.STAGES, aiReady: !!prop_('ANTHROPIC_API_KEY'), roles: ROLES, roleCap: ROLES.reduce(function (a, r) { a[r] = roleCap_(r); return a; }, {}), maxRoles: V2.MAX_ROLES, teamMax: V2.TEAM_MAX };
+  const out = { classes: list, cls: cls, stages: V2.STAGES, aiReady: !!aiProvider_(), roles: ROLES, roleCap: ROLES.reduce(function (a, r) { a[r] = roleCap_(r); return a; }, {}), maxRoles: V2.MAX_ROLES, teamMax: V2.TEAM_MAX };
   if (!cls) return out;
   const st = states[cls];
   out.stage = st ? String(st['단계'] || '') : '';
@@ -284,7 +284,7 @@ function aiGroup_(p) {
     '- 학생은 아래 코드(학생01 등)로만 적습니다.\n\n' + lines.join('\n');
   if (p.preview) return { preview: { system: system, user: user } };
   const schema = { type: 'object', properties: { groups: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, members: { type: 'array', items: { type: 'string' } } }, required: ['name', 'members'], additionalProperties: false } }, unclear: { type: 'array', items: { type: 'string' } } }, required: ['groups', 'unclear'], additionalProperties: false };
-  const r = claude_(system, user, schema, { effort: 'low', purpose: cls + '반 조 편성' });
+  const r = ai_(system, user, schema, { effort: 'low', purpose: cls + '반 조 편성' });
   const groups = repairGroups_(r.groups || [], Object.keys(ali.byAlias), k).map(function (g, i) {
     return { no: i + 1, name: clip_(g.name, 40) || ('분야 ' + (i + 1)), sids: g.members.map(function (a) { return ali.byAlias[a]; }) };
   });
@@ -435,7 +435,7 @@ function evalMap_(tid) {
 function presTeam_(p) {
   const team = teamById_(p.tid), tid = team['팀ID'];
   const ms = membersOf_(tid).map(function (m) { return { sid: String(m['학번']), name: m['이름'], roles: rolesOf_(m) }; });
-  return { team: { tid: tid, cls: String(team['반']), no: String(team['조']), field: String(team['분야']), status: team['상태'] }, members: ms, rec: presOf_(tid), evals: evalMap_(tid), segs: V2.SEGS, items: V2.ITEMS, improve: V2.IMPROVE, aiReady: !!prop_('ANTHROPIC_API_KEY') };
+  return { team: { tid: tid, cls: String(team['반']), no: String(team['조']), field: String(team['분야']), status: team['상태'] }, members: ms, rec: presOf_(tid), evals: evalMap_(tid), segs: V2.SEGS, items: V2.ITEMS, improve: V2.IMPROVE, aiReady: !!aiProvider_() };
 }
 
 function transcriptText_(segs) {
@@ -526,7 +526,7 @@ function aiPresent_(p) {
     schema = { type: 'object', properties: { students: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, items: ITEM_SCHEMA_(true) }, required: ['code', 'items'], additionalProperties: false } } }, required: ['students'], additionalProperties: false };
   }
   if (p.preview) return { preview: { system: system, user: user } };
-  const r = claude_(system, user, schema, { effort: 'medium', purpose: tid + ' ' + (stage === 'fb1' ? '1차 피드백' : '2차 변화') });
+  const r = ai_(system, user, schema, { effort: 'medium', purpose: tid + ' ' + (stage === 'fb1' ? '1차 피드백' : '2차 변화') });
   return withLock_(function () {
     const rows = evalRows_(tid), at = now_(), withImp = stage === 'chg2';
     const put = function (sid, name, obj) {
@@ -614,7 +614,7 @@ function seteukList_(p) {
     .sort(function (a, b) { return (Number(a['반']) - Number(b['반'])) || (Number(a['조']) - Number(b['조'])) || (String(a['학번']) < String(b['학번']) ? -1 : 1); });
   return {
     len: seteukLen_(), classes: Object.keys(stud.reduce(function (a, s) { a[s['반']] = 1; return a; }, {})),
-    aiReady: !!prop_('ANTHROPIC_API_KEY'),
+    aiReady: !!aiProvider_(),
     teams: Object.keys(teams).filter(function (k) { return !cls || String(teams[k]['반']) === cls; }).map(function (k) { return { tid: k, cls: String(teams[k]['반']), no: String(teams[k]['조']), field: String(teams[k]['분야']) }; }).sort(function (a, b) { return (Number(a.cls) - Number(b.cls)) || (Number(a.no) - Number(b.no)); }),
     students: stud.map(function (s) {
       const r = rows[String(s['학번'])] || {}, fin = String(r['최종본'] || ''), cur = fin || String(r['AI초안'] || '');
@@ -647,7 +647,7 @@ function aiSeteuk_(p) {
     '- code에는 학생 코드(학생01 등)를 그대로 적습니다.\n\n[모둠 프로젝트 정보]\n' + ali.mask(facts) + '\n\n[학생별 자료]\n' + blocks;
   if (p.preview) return { preview: { system: system, user: user } };
   const schema = { type: 'object', properties: { students: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, text: { type: 'string' } }, required: ['code', 'text'], additionalProperties: false } } }, required: ['students'], additionalProperties: false };
-  const r = claude_(system, user, schema, { effort: 'medium', purpose: tid + ' 세특' });
+  const r = ai_(system, user, schema, { effort: 'medium', purpose: tid + ' 세특' });
   return withLock_(function () {
     const ex = {}, at = now_();
     readAll_('seteuk').forEach(function (row) { ex[String(row['학번'])] = row; });
@@ -700,10 +700,63 @@ function aliases_(list) {
   };
 }
 
+// 어떤 AI를 쓸지: 스크립트 속성 AI_PROVIDER(gemini|claude)가 있으면 그것, 없으면 키가 있는 쪽 (Gemini 우선)
+function aiProvider_() {
+  const want = String(prop_('AI_PROVIDER') || '').toLowerCase();
+  if (want === 'gemini' || want === 'claude') return (want === 'gemini' ? prop_('GEMINI_API_KEY') : prop_('ANTHROPIC_API_KEY')) ? want : '';
+  return prop_('GEMINI_API_KEY') ? 'gemini' : prop_('ANTHROPIC_API_KEY') ? 'claude' : '';
+}
+
+// 모든 AI 기능이 이 함수 하나로 부른다. schema: 돌려받을 JSON 모양(JSON Schema)
+function ai_(system, user, schema, opt) {
+  const pv = aiProvider_();
+  if (pv === 'gemini') return gemini_(system, user, schema, opt || {});
+  if (pv === 'claude') return claude_(system, user, schema, opt || {});
+  throw fail_('NO_AI_KEY', 'AI를 쓰려면 Apps Script 스크립트 속성에 GEMINI_API_KEY(무료, Google AI Studio에서 발급)를 넣어 주세요. (README 참고)');
+}
+
+function aiFriendly_(code, name) {
+  return code === 400 ? name + ' 요청 형식 오류예요.' : code === 401 || code === 403 ? 'API 키가 올바르지 않거나 권한이 없어요.' : code === 404 ? '모델 이름을 찾지 못했어요. 스크립트 속성의 모델 이름을 확인하세요.' : code === 429 ? '사용량 한도에 걸렸어요(무료 요금제는 분당·하루 요청 수가 제한돼요). 1분쯤 뒤, 또는 내일 다시 시도해 주세요.' : code >= 500 ? 'AI 서버가 바빠요. 잠시 뒤 다시 시도해 주세요.' : 'AI 요청이 실패했어요.';
+}
+
+// Google Gemini (generateContent + JSON Schema 구조화 출력)
+function gemini_(system, user, schema, opt) {
+  const key = prop_('GEMINI_API_KEY'), model = prop_('GEMINI_MODEL') || 'gemini-3.8-flash';
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  const send = function (genCfg) {
+    const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: genCfg };
+    try {
+      return UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(body), headers: { 'x-goog-api-key': key } });
+    } catch (e) { throw fail_('AI_NETWORK', 'AI 서버에 연결하지 못했어요(시간 초과 등). 잠시 뒤 다시 시도해 주세요.'); }
+  };
+  let res = send({ responseMimeType: 'application/json', responseJsonSchema: schema, maxOutputTokens: 16000 });
+  let code = res.getResponseCode(), data = jsonOr_(res.getContentText(), {});
+  // 이전 형식만 받는 경우를 위해 한 번 더 시도
+  if (code === 400 && /responseJsonSchema|Unknown name/i.test(JSON.stringify(data))) {
+    res = send({ responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: schema } }, maxOutputTokens: 16000 });
+    code = res.getResponseCode(); data = jsonOr_(res.getContentText(), {});
+  }
+  if (code !== 200) {
+    const msg = data.error && data.error.message ? data.error.message : ('HTTP ' + code);
+    log_('AI', '오류', (opt.purpose || '') + ' gemini ' + code + ' ' + msg);
+    throw fail_('AI_ERROR', aiFriendly_(code, 'Gemini') + ' (' + msg.slice(0, 160) + ')');
+  }
+  if (data.promptFeedback && data.promptFeedback.blockReason) throw fail_('AI_REFUSED', 'AI가 이 요청을 처리하지 않았어요(' + data.promptFeedback.blockReason + '). 기록 내용을 확인한 뒤 다시 시도해 주세요.');
+  const c = (data.candidates || [])[0] || {};
+  if (c.finishReason === 'MAX_TOKENS') throw fail_('AI_TOO_LONG', 'AI 응답이 너무 길어 잘렸어요. 대상을 나눠서 다시 시도해 주세요.');
+  if (c.finishReason && c.finishReason !== 'STOP') throw fail_('AI_REFUSED', 'AI가 응답을 끝내지 못했어요(' + c.finishReason + '). 다시 시도해 주세요.');
+  const text = ((c.content || {}).parts || []).filter(function (x) { return x.text && !x.thought; }).map(function (x) { return x.text; }).join('');
+  const out = jsonOr_(text, null);
+  if (!out) throw fail_('AI_BAD_JSON', 'AI 응답을 읽지 못했어요. 다시 시도해 주세요.');
+  const u = data.usageMetadata || {};
+  log_('AI', '호출', (opt.purpose || '') + ' · ' + (data.modelVersion || model) + ' · 입력 ' + (u.promptTokenCount || 0) + ' / 출력 ' + (u.candidatesTokenCount || 0) + ' 토큰');
+  return out;
+}
+
+// Anthropic Claude (선택: ANTHROPIC_API_KEY 를 넣고 AI_PROVIDER=claude)
 function claude_(system, user, schema, opt) {
   opt = opt || {};
   const key = prop_('ANTHROPIC_API_KEY');
-  if (!key) throw fail_('NO_AI_KEY', 'AI를 쓰려면 Apps Script 스크립트 속성에 ANTHROPIC_API_KEY 를 넣어 주세요. (README 참고)');
   const body = {
     model: prop_('CLAUDE_MODEL') || 'claude-opus-5-5',
     max_tokens: 16000,
@@ -722,7 +775,7 @@ function claude_(system, user, schema, opt) {
   const code = res.getResponseCode(), data = jsonOr_(res.getContentText(), {});
   if (code !== 200) {
     const msg = data.error && data.error.message ? data.error.message : ('HTTP ' + code);
-    const friendly = code === 401 ? 'API 키가 올바르지 않아요.' : code === 429 ? '요청이 많아 잠시 막혔어요. 1분쯤 뒤 다시 시도해 주세요.' : code === 529 || code >= 500 ? 'AI 서버가 바빠요. 잠시 뒤 다시 시도해 주세요.' : 'AI 요청이 실패했어요.';
+    const friendly = aiFriendly_(code, 'Claude');
     log_('AI', '오류', (opt.purpose || '') + ' ' + code + ' ' + msg);
     throw fail_('AI_ERROR', friendly + ' (' + msg.slice(0, 160) + ')');
   }

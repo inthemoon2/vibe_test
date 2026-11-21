@@ -9,8 +9,9 @@
  *
  * ■ 스크립트 속성 (모두 선택, ADMIN_PASSWORD 만 필수)
  *   ADMIN_PASSWORD  : 관리자 페이지 비밀번호 (필수)
- *   ANTHROPIC_API_KEY : Claude API 키 (AI 조 편성·발표 피드백·세특 초안에 필요)
- *   CLAUDE_MODEL    : 사용할 Claude 모델 (비우면 claude-opus-5-5)
+ *   GEMINI_API_KEY  : Google Gemini API 키 (무료, AI 조 편성·발표 피드백·세특 초안에 필요)
+ *   GEMINI_MODEL    : 사용할 Gemini 모델 (비우면 gemini-3.8-flash)
+ *   ANTHROPIC_API_KEY · CLAUDE_MODEL · AI_PROVIDER : Claude 를 쓰고 싶을 때(선택). AI_PROVIDER=claude
  *   SPREADSHEET_ID  : 시트에 붙여 만든 스크립트가 아니라면 시트 ID 입력
  *   DRIVE_FOLDER_ID : 제출 파일을 모을 드라이브 폴더 ID (없으면 자동 생성)
  *   SESSION_SECRET  : 로그인 서명용 비밀값 (자동 생성됨, 직접 만들 필요 없음)
