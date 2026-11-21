@@ -9,6 +9,8 @@
  *
  * ■ 스크립트 속성 (모두 선택, ADMIN_PASSWORD 만 필수)
  *   ADMIN_PASSWORD  : 관리자 페이지 비밀번호 (필수)
+ *   ANTHROPIC_API_KEY : Claude API 키 (AI 조 편성·발표 피드백·세특 초안에 필요)
+ *   CLAUDE_MODEL    : 사용할 Claude 모델 (비우면 claude-opus-5-5)
  *   SPREADSHEET_ID  : 시트에 붙여 만든 스크립트가 아니라면 시트 ID 입력
  *   DRIVE_FOLDER_ID : 제출 파일을 모을 드라이브 폴더 ID (없으면 자동 생성)
  *   SESSION_SECRET  : 로그인 서명용 비밀값 (자동 생성됨, 직접 만들 필요 없음)
@@ -17,11 +19,12 @@
  *   1. 화면 구성(SCHEMA)·평가 기준(RUBRIC)   ← 항목을 바꾸고 싶으면 여기만 고친다
  *   2. 공통 도구(시트 읽기/쓰기, 로그인 토큰)
  *   3. 학생용 기능   4. 가상 채점   5. 관리자 기능
+ *   (v2 추가 기능 — 명단·로그인, 관심 분야·조 편성, 발표 기록, AI, 세특 — 은 V2.gs 에 있다)
  *
  * ■ 주의: 항목(필드) id 를 바꾸거나 지우면 이미 쓴 내용과 연결이 끊어진다. 새 항목 추가는 괜찮다.
  */
 
-const VERSION = '1.0';
+const VERSION = '2.0';
 const BASE_SCORE_DEFAULT = 30;          // 결석 학생 기본 점수 (설정 화면에서 바꿀 수 있음)
 const MAX_BYTES = { csv: 5 * 1024 * 1024, img: 5 * 1024 * 1024, ppt: 10 * 1024 * 1024 };
 const SESSION_HOURS = { s: 12, a: 8 };
@@ -43,7 +46,7 @@ const SESSIONS = [
 /* ════════════════ 1-A. 시트 정의 ════════════════ */
 const SH = {
   teams:    { name: '조현황',   text: true,  headers: ['팀ID', '반', '조', '분야', '비번해시', '비번솔트', '상태', '제출일시', '제출자', '보고서ID', '보고서링크', '변경번호', '마지막수정', '마지막수정자', '진행률', '단계진행', '생성일시'] },
-  students: { name: '학생',     text: true,  headers: ['팀ID', '반', '조', '학번', '이름', '역할', '결석', '메모'] },
+  students: { name: '학생',     text: true,  headers: ['팀ID', '반', '조', '학번', '이름', '역할', '결석', '메모', '관심분야', '관심분야수정', '비번해시', '비번솔트'] },
   content:  { name: '내용',     text: true,  headers: ['키', '팀ID', '필드', '값', '버전', '수정자', '수정일시'] },
   history:  { name: '수정이력', text: true,  headers: ['일시', '팀ID', '반', '조', '학번', '이름', '페이지', '필드', '글자수변화', '종류'] },
   files:    { name: '파일',     text: true,  headers: ['파일ID', '팀ID', '종류', '필드', '파일명', '크기', '링크', '메타', '업로더', '일시', '사용'] },
@@ -57,6 +60,11 @@ const SH = {
   feedback: { name: '피드백',       text: true, headers: ['팀ID', '총평', '프로젝트평가', '교사한마디', '공개', '개인공개', '수정일시'] },
   settings: { name: '설정',     text: true,  headers: ['키', '값'] },
   logs:     { name: '로그',     text: true,  headers: ['일시', '주체', '행동', '상세'] },
+  // ---- v2 ----
+  classes:  { name: '반상태',   text: true,  headers: ['반', '단계', '분류안', '공개일시', '확정일시', '수정일시'] },
+  pres:     { name: '발표기록', text: true,  headers: ['팀ID', '반', '조', '회차', '녹음일', '구간목록', '전문', '수정일시'] },
+  peval:    { name: '발표평가', text: true,  headers: ['팀ID', '단계', '학번', '이름', 'AI초안', '최종본', '승인', '공개', '수정일시'] },
+  seteuk:   { name: '세특',     text: true,  headers: ['반', '학번', '이름', '팀ID', 'AI초안', '최종본', '글자수', '바이트', '승인', '승인일시', '수정일시'] },
 };
 
 /* ════════════════ 1-B. 평가 기준 (HWP 평가 기준표 그대로) ════════════════ */
@@ -357,7 +365,7 @@ function log_(who, act, detail) { try { appendObj_('logs', { 일시: now_(), 주
 
 /* ---- 설정 ---- */
 function settings_() {
-  const s = { schoolName: '', siteUrl: '', baseScore: String(BASE_SCORE_DEFAULT), session3At: '', deadlineHours: '48', deadlineLock: '0', leaderSubmit: '1', pptDue: '' };
+  const s = { schoolName: '', siteUrl: '', baseScore: String(BASE_SCORE_DEFAULT), session3At: '', deadlineHours: '48', deadlineLock: '0', leaderSubmit: '1', pptDue: '', seteukLen: '300' };
   readAll_('settings').forEach(function (r) { s[r['키']] = String(r['값']); });
   return s;
 }
@@ -483,9 +491,13 @@ function teamId_(cls, no) { return 'C' + cls + '-' + no; }
  * auth: 'pub' 로그인 없이 / 's' 학생(조 로그인) / 'a' 관리자
  * 권한 판단은 모두 서버에서 한다. 화면에서 메뉴를 숨기는 것은 편의일 뿐이다.
  */
+// V2.gs 에 있는 기능은 파일 실행 순서와 상관없이 부를 수 있도록 이름으로 늦게 찾는다
+function L_(name) { return function (p, a) { return globalThis[name](p, a); }; }
+
 const ACTIONS = {
   schema:          { auth: 'pub', run: schema_ },
-  login:           { auth: 'pub', run: login_ },
+  login:           { auth: 'pub', run: L_('login2_') },
+  setPassword:     { auth: 'pub', run: L_('setPassword2_') },
   adminLogin:      { auth: 'pub', run: adminLogin_ },
   getReport:       { auth: 'pub', run: getReport_ },
   // 학생
@@ -496,12 +508,18 @@ const ACTIONS = {
   submitProject:   { auth: 's', run: submitProject_ },
   getReportLink:   { auth: 's', run: getReportLink_ },
   getFeedback:     { auth: 's', view: true, run: getFeedback_ },
+  // 학생 (v2: 조가 정해지기 전에도 쓰는 기능은 team: false)
+  myStatus:        { auth: 's', team: false, run: L_('myStatus_') },
+  saveInterest:    { auth: 's', team: false, run: L_('saveInterest_') },
+  pickRole:        { auth: 's', team: false, run: L_('pickRole_') },
+  getPresFeedback: { auth: 's', view: true, run: L_('getPresFeedback_') },
   // 관리자
   adminOverview:   { auth: 'a', run: adminOverview_ },
-  importRoster:    { auth: 'a', run: importRoster_ },
-  importIds:       { auth: 'a', run: importIds_ },
-  setStudent:      { auth: 'a', run: setStudent_ },
-  issuePasswords:  { auth: 'a', run: issuePasswords_ },
+  importClassRoster: { auth: 'a', run: L_('importClassRoster_') },
+  rosterList:      { auth: 'a', run: L_('rosterList_') },
+  setStudent:      { auth: 'a', run: L_('setStudent2_') },
+  resetStudentPw:  { auth: 'a', run: L_('resetStudentPw_') },
+  removeStudent:   { auth: 'a', run: L_('removeStudent_') },
   reopenTeam:      { auth: 'a', run: reopenTeam_ },
   adminTeam:       { auth: 'a', run: adminTeam_ },
   saveTeamScore:   { auth: 'a', run: saveTeamScore_ },
@@ -515,6 +533,23 @@ const ACTIONS = {
   adminFeedback:   { auth: 'a', run: adminFeedback_ },
   saveFeedback:    { auth: 'a', run: saveFeedback_ },
   setFeedbackPublish: { auth: 'a', run: setFeedbackPublish_ },
+  // 관리자 (v2)
+  formation:       { auth: 'a', run: L_('formation_') },
+  closeInterest:   { auth: 'a', run: L_('closeInterest_') },
+  aiGroup:         { auth: 'a', run: L_('aiGroup_') },
+  saveGroups:      { auth: 'a', run: L_('saveGroups_') },
+  publishGroups:   { auth: 'a', run: L_('publishGroups_') },
+  confirmTeams:    { auth: 'a', run: L_('confirmTeams_') },
+  moveStudent:     { auth: 'a', run: L_('moveStudent_') },
+  setRoles:        { auth: 'a', run: L_('setRoles_') },
+  presTeam:        { auth: 'a', run: L_('presTeam_') },
+  saveRecording:   { auth: 'a', run: L_('saveRecording_') },
+  aiPresent:       { auth: 'a', run: L_('aiPresent_') },
+  saveEval:        { auth: 'a', run: L_('saveEval_') },
+  publishEval:     { auth: 'a', run: L_('publishEval_') },
+  seteukList:      { auth: 'a', run: L_('seteukList_') },
+  aiSeteuk:        { auth: 'a', run: L_('aiSeteuk_') },
+  saveSeteuk:      { auth: 'a', run: L_('saveSeteuk_') },
 };
 
 function isAdminToken_(token) { try { verifyToken_(token, 'a'); return true; } catch (e) { return false; } }
@@ -530,7 +565,7 @@ function doPost(e) {
     if (h.auth === 's') {
       // 관리자 토큰 + 조 ID 로 '보기 전용' 접근 (저장·제출·업로드는 불가)
       if (h.view && req.payload && req.payload.tid && isAdminToken_(req.token)) auth = { k: 's', tid: String(req.payload.tid), n: '교사(보기)', sid: '', view: true };
-      else auth = verifyToken_(req.token, 's');
+      else auth = globalThis.studentAuth_(verifyToken_(req.token, 's'), h.team !== false);   // v2: 학번으로 지금 속한 조를 매번 찾는다(교사가 조를 옮길 수 있으므로)
     }
     else if (h.auth === 'a') auth = verifyToken_(req.token, 'a');
     return json_({ ok: true, data: h.run(req.payload || {}, auth) });
@@ -542,23 +577,7 @@ function doPost(e) {
 /* ════════════════ 3. 학생용 기능 ════════════════ */
 
 function schema_() {
-  return { version: VERSION, roles: ROLES, pages: PAGES, rubric: RUBRIC, elems: ELEMS, elemNames: ELEM_COL, sessions: SESSIONS, levels: LEVELS };
-}
-
-function login_(p) {
-  const sid = String(p.sid || '').replace(/\D/g, ''), name = String(p.name || '').trim(), pw = String(p.pw || '').trim();
-  if (!sid || !name || !pw) throw fail_('BAD_INPUT', '학번, 이름, 조 비밀번호를 모두 입력해 주세요.');
-  if (failCount_('s' + sid) >= 5) throw fail_('LOCKED_OUT', '비밀번호를 여러 번 틀려서 10분 동안 로그인할 수 없어요. 잠시 뒤 다시 시도해 주세요.');
-  const generic = fail_('LOGIN_FAIL', '학번, 이름 또는 조 비밀번호가 올바르지 않습니다.');
-  const stu = readAll_('students').filter(function (r) { return String(r['학번']) === sid && r['이름'] === name; })[0];
-  if (!stu) { failAdd_('s' + sid); throw generic; }
-  const team = teamById_(stu['팀ID']);
-  if (!team['비번해시']) throw fail_('NO_PW', '아직 조 비밀번호가 발급되지 않았어요. 선생님께 문의해 주세요.');
-  if (!safeEq_(hashPw_(pw, team['비번솔트']), team['비번해시'])) { failAdd_('s' + sid); log_(sid + ' ' + name, '로그인 실패', team['팀ID']); throw generic; }
-  failClear_('s' + sid);
-  log_(sid + ' ' + name, '로그인', team['팀ID']);
-  const token = signToken_({ k: 's', tid: team['팀ID'], n: name, sid: sid, exp: Date.now() + SESSION_HOURS.s * 3600 * 1000 });
-  return { token: token };
+  return { version: VERSION, roles: ROLES, pages: PAGES, rubric: RUBRIC, elems: ELEMS, elemNames: ELEM_COL, sessions: SESSIONS, levels: LEVELS, v2: globalThis.v2Schema_() };
 }
 
 function presenceClean_(m) {
@@ -1240,108 +1259,7 @@ function adminOverview_(p) {
   return { settings: st, deadline: dl, ppt: pptInfo_(st), teams: teams, pages: PAGES.map(function (pg) { return { id: pg.id, no: pg.no, title: pg.title }; }), version: VERSION };
 }
 
-/* ---- 명단 올리기 ---- */
-function normRoles_(arr) {
-  const out = [];
-  (arr || []).forEach(function (r) { if (ROLES.indexOf(r) >= 0 && out.indexOf(r) < 0) out.push(r); });
-  return out;
-}
-
-function importRoster_(p) {
-  const clsN = parseInt(p.cls, 10);
-  if (!(clsN >= 1 && clsN <= 99)) throw fail_('BAD_INPUT', '반 번호를 올바르게 입력해 주세요.');
-  const cls = String(clsN), input = Array.isArray(p.teams) ? p.teams : [];
-  if (!input.length || input.length > 40) throw fail_('BAD_INPUT', '조 정보가 없거나 너무 많습니다.');
-  return withLock_(function () {
-    const teams = readAll_('teams'), at = now_(), res = { created: 0, updated: 0, students: 0, warnings: [] };
-    let stud = readAll_('students');
-    input.forEach(function (t) {
-      const noN = parseInt(t.no, 10);
-      if (!(noN >= 1)) return;
-      const no = String(noN), tid = teamId_(cls, no), map = {}, order = [];
-      (t.members || []).forEach(function (m) {
-        const nm = String(m.name || '').trim().slice(0, 20);
-        if (!nm) return;
-        if (!map[nm]) { map[nm] = []; order.push(nm); }
-        normRoles_(m.roles).forEach(function (r) { if (map[nm].indexOf(r) < 0) map[nm].push(r); });
-      });
-      if (order.length < 3 || order.length > 5) res.warnings.push(cls + '반 ' + no + '조: 인원이 ' + order.length + '명입니다.');
-      ROLES.forEach(function (r) { if (!order.some(function (nm) { return map[nm].indexOf(r) >= 0; })) res.warnings.push(cls + '반 ' + no + '조: "' + r + '" 담당이 비어 있습니다.'); });
-      const ex = teams.filter(function (r) { return r['팀ID'] === tid; })[0], field = String(t.field || '').slice(0, 40);
-      if (ex) { writeRow_('teams', ex._row, { 분야: field }); res.updated++; }
-      else { appendObj_('teams', { 팀ID: tid, 반: cls, 조: no, 분야: field, 상태: '작성중', 변경번호: 0, 진행률: 0, 생성일시: at }); res.created++; }
-      const old = {};
-      stud.filter(function (r) { return r['팀ID'] === tid; }).forEach(function (r) { old[r['이름']] = r; });
-      stud = stud.filter(function (r) { return r['팀ID'] !== tid; });
-      order.forEach(function (nm) { const o = old[nm]; stud.push({ 팀ID: tid, 반: cls, 조: no, 학번: o ? o['학번'] : '', 이름: nm, 역할: map[nm].join(','), 결석: o ? o['결석'] : '', 메모: o ? o['메모'] : '' }); });
-      Object.keys(old).forEach(function (nm) { if (!map[nm]) res.warnings.push(cls + '반 ' + no + '조: ' + nm + ' 학생이 이번 명단에 없어 조원에서 제외되었습니다.'); });
-      res.students += order.length;
-    });
-    rewrite_('students', stud);
-    log_('관리자', '역할표 업로드', cls + '반 조 ' + (res.created + res.updated) + '개');
-    return res;
-  });
-}
-
-function importIds_(p) {
-  const clsN = parseInt(p.cls, 10), rows = Array.isArray(p.rows) ? p.rows : [];
-  if (!(clsN >= 1 && clsN <= 99)) throw fail_('BAD_INPUT', '반 번호를 올바르게 입력해 주세요.');
-  if (!rows.length || rows.length > 500) throw fail_('BAD_INPUT', '학번 명부가 비어 있거나 너무 큽니다.');
-  const cls = String(clsN);
-  return withLock_(function () {
-    const stud = readAll_('students'), res = { matched: 0, unmatched: [], ambiguous: [], warnings: [], missing: [] };
-    const byName = {};
-    stud.filter(function (s) { return s['반'] === cls; }).forEach(function (s) { (byName[s['이름']] = byName[s['이름']] || []).push(s); });
-    rows.forEach(function (r) {
-      const sid = String(r.sid || '').replace(/\D/g, ''), nm = String(r.name || '').trim();
-      if (!sid || !nm) return;
-      const hit = byName[nm];
-      if (!hit) { res.unmatched.push(nm + '(' + sid + ')'); return; }
-      if (hit.length > 1) { res.ambiguous.push(nm + '(' + sid + ')'); return; }
-      if (sid.length === 5 && Number(sid.slice(1, 3)) !== clsN) res.warnings.push(nm + ': 학번 ' + sid + '의 반 자리가 ' + cls + '반과 달라요.');
-      hit[0]['학번'] = sid; res.matched++;
-    });
-    const seen = {};
-    stud.forEach(function (s) { const k = String(s['학번']); if (k) { if (seen[k]) res.warnings.push('학번 ' + k + '이(가) 중복됩니다: ' + seen[k] + ', ' + s['이름']); else seen[k] = s['이름']; } });
-    stud.filter(function (s) { return s['반'] === cls && String(s['학번']) === ''; }).forEach(function (s) { res.missing.push(s['조'] + '조 ' + s['이름']); });
-    rewrite_('students', stud);
-    log_('관리자', '학번 명부 업로드', cls + '반 ' + res.matched + '명 일치');
-    return res;
-  });
-}
-
-function setStudent_(p) {
-  return withLock_(function () {
-    const stud = readAll_('students'), s = stud.filter(function (x) { return x['팀ID'] === p.tid && x['이름'] === p.name; })[0];
-    if (!s) throw fail_('NOT_FOUND', '학생을 찾을 수 없습니다.');
-    const upd = {};
-    if (p.sid !== undefined) {
-      const sid = String(p.sid).replace(/\D/g, '');
-      if (sid && (sid.length < 3 || sid.length > 10)) throw fail_('BAD_INPUT', '학번은 숫자 3~10자리로 입력해 주세요.');
-      if (sid && stud.some(function (x) { return String(x['학번']) === sid && x !== s; })) throw fail_('DUP', '이미 다른 학생에게 등록된 학번입니다.');
-      upd['학번'] = sid;
-    }
-    if (p.memo !== undefined) upd['메모'] = String(p.memo).slice(0, 200);
-    writeRow_('students', s._row, upd);
-    return { ok: true };
-  });
-}
-
-function issuePasswords_(p) {
-  return withLock_(function () {
-    const teams = readAll_('teams').sort(sortTeams_), students = readAll_('students'), out = [];
-    const pick = Array.isArray(p.tids) && p.tids.length ? p.tids : null;
-    teams.forEach(function (t) {
-      if (pick ? pick.indexOf(t['팀ID']) < 0 : (p.scope !== 'all' && t['비번해시'])) return;
-      const pw = genPw_(), salt = Utilities.getUuid().slice(0, 8);
-      writeRow_('teams', t._row, { 비번솔트: salt, 비번해시: hashPw_(pw, salt) });
-      out.push({ tid: t['팀ID'], cls: t['반'], no: t['조'], field: t['분야'], pw: pw, members: students.filter(function (s) { return s['팀ID'] === t['팀ID']; }).map(function (s) { return s['이름']; }) });
-    });
-    log_('관리자', '비밀번호 발급', out.length + '개 조');
-    return { list: out };
-  });
-}
-
+/* ---- 명단·로그인·조 편성은 V2.gs ---- */
 function reopenTeam_(p) {
   return withLock_(function () {
     const team = teamById_(p.tid);
@@ -1525,6 +1443,7 @@ function saveSettings_(p) {
     }
     if (p.deadlineLock !== undefined) setSetting_('deadlineLock', p.deadlineLock ? '1' : '0');
     if (p.leaderSubmit !== undefined) setSetting_('leaderSubmit', p.leaderSubmit ? '1' : '0');
+    if (p.seteukLen !== undefined) { const n = Number(p.seteukLen); if (isNaN(n) || n < 50 || n > 1000) throw fail_('BAD_INPUT', '세특 분량은 50~1000자 사이로 입력해 주세요.'); setSetting_('seteukLen', String(Math.round(n))); }
     refreshView_();
     return { settings: settings_() };
   });
