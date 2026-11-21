@@ -245,11 +245,11 @@ function formation_(p) {
   out.students = stud.filter(function (s) { return String(s['반']) === cls; }).sort(function (a, b) { return String(a['학번']) < String(b['학번']) ? -1 : 1; })
     .map(function (s) { return { sid: String(s['학번']), name: s['이름'], interest: String(s['관심분야'] || ''), interestAt: String(s['관심분야수정'] || ''), hasPw: !!s['비번해시'], tid: String(s['팀ID'] || ''), no: String(s['조'] || ''), roles: rolesOf_(s) }; });
   out.draft = st ? jsonOr_(st['분류안'], null) : null;
-  const leaderOnly = settings_().leaderSubmit !== '0';
+  const st2 = settings_();
   out.teams = teams.filter(function (t) { return String(t['반']) === cls; }).sort(sortTeams_).map(function (t) {
     const ms = out.students.filter(function (s) { return s.tid === t['팀ID']; });
     const empty = ROLES.filter(function (r) { return !ms.some(function (m) { return m.roles.indexOf(r) >= 0; }); });
-    return { tid: t['팀ID'], no: String(t['조']), field: String(t['분야']), status: t['상태'], members: ms, emptyRoles: empty, noLeader: leaderOnly && empty.indexOf('프로젝트 매니저') >= 0, noRole: ms.filter(function (m) { return !m.roles.length; }).map(function (m) { return m.name; }) };
+    return { tid: t['팀ID'], no: String(t['조']), field: String(t['분야']), status: t['상태'], members: ms, emptyRoles: empty, noLeader: teamNoLeader_(t, stud.filter(function (s) { return s['팀ID'] === t['팀ID']; }), st2), noRole: ms.filter(function (m) { return !m.roles.length; }).map(function (m) { return m.name; }) };
   });
   return out;
 }

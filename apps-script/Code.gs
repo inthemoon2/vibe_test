@@ -628,9 +628,12 @@ function projectState_(auth) {
 // 최종 제출은 팀장만 (설정에서 끌 수 있음). v2: 팀장이 없는 조는 교사가 팀장을 지정할 때까지 제출할 수 없다.
 function submitRule_(members, who) {
   const leaders = members.filter(isLeader_).map(function (m) { return m['이름']; });
-  const only = settings_().leaderSubmit !== '0';
-  return { leaderOnly: only, leaders: leaders, noLeader: only && !leaders.length, canSubmit: !only || leaders.indexOf(who) >= 0 };
+  const leaderOnly = leaderOnly_();
+  return { leaderOnly: leaderOnly, leaders: leaders, noLeader: leaderOnly && !leaders.length, canSubmit: !leaderOnly || leaders.indexOf(who) >= 0 };
 }
+function leaderOnly_(st) { return (st || settings_()).leaderSubmit !== '0'; }
+// 교사 화면의 "팀장 없음" 경고: '팀장만 제출'이 켜져 있고, 확정되어 작성 중인 조에 팀장이 없을 때만
+function teamNoLeader_(team, members, st) { return leaderOnly_(st) && team['상태'] === '작성중' && !members.some(isLeader_); }
 
 function loadProject_(p, auth) {
   const st = projectState_(auth);
@@ -1254,7 +1257,7 @@ function adminOverview_(p) {
       lastEdit: t['마지막수정'], lastBy: t['마지막수정자'], submitAt: t['제출일시'], hasPw: !!t['비번해시'], online: online[t['팀ID']] || [],
       nStudents: ms.length, noSid: ms.filter(function (s) { return String(s['학번']) === ''; }).length,
       reportUrl: t['보고서ID'] ? reportUrl_(t['보고서ID']) : '', reportId: t['보고서ID'], scored: !!scored[t['팀ID']],
-      ppt: !!pptSet[String(t['팀ID'])], noLeader: st.leaderSubmit !== '0' && !ms.some(isLeader_),
+      ppt: !!pptSet[String(t['팀ID'])], noLeader: teamNoLeader_(t, ms, st),
       late: !!(dl && t['제출일시'] && String(t['제출일시']) > dl.at + ':00'),
     };
   });

@@ -101,6 +101,8 @@ try {
   must(call('pickRole', { role: '도메인 분석가', on: true }, tok[7]), '도메인 분석가');
   f = must(call('formation', { cls: 3 }, admin), '현황');
   ok(f.teams[0].emptyRoles.join() === 'AI 윤리·소통 담당', '빈 역할 표시: ' + f.teams[0].emptyRoles.join());
+  ok(f.teams.find(t => t.no === '3').noLeader === false, '역할 고르는 중에는 팀장 없음 경고 안 함(조 구성)');
+  ok(must(call('adminOverview', {}, admin), '진행 현황').teams.find(t => t.no === '3').noLeader === false, '역할 고르는 중에는 팀장 없음 경고 안 함(진행 현황)');
   must(call('setRoles', { sid: sids[1], roles: ['데이터 엔지니어', 'AI 윤리·소통 담당'] }, admin), '교사 역할 지정');
   f = must(call('confirmTeams', { cls: 3 }, admin), '확정');
   ok(f.teams.every(t => t.status === '작성중'), '확정 후 작성중');
@@ -214,12 +216,19 @@ try {
   must(call('saveSettings', { leaderSubmit: false }, admin), '팀장만 제출 끄기');
   const p3off = must(call('loadProject', {}, tok[4]), '설정 끈 뒤');
   ok(p3off.submitRule.canSubmit === true && p3off.submitRule.noLeader === false, '설정을 끄면 팀장 없어도 누구나 제출');
+  // 설정을 끈 동안 팀장 없는 3조가 제출 → 다시 켜도 이미 제출한 조에는 "팀장 없음" 경고를 띄우지 않는다
+  must(call('submitProject', {}, tok[4]), '설정 끈 동안 팀장 없는 조 제출');
   must(call('saveSettings', { leaderSubmit: true }, admin), '설정 되돌리기');
+  ok(must(call('adminOverview', {}, admin), '진행 현황').teams.find(t => t.no === '3').noLeader === false, '제출 완료한 조에는 팀장 없음 경고 안 함');
+  ok(must(call('formation', { cls: 3 }, admin), '현황').teams.find(t => t.no === '3').noLeader === false, '제출 완료한 조는 조 구성 화면에도 경고 안 함');
 
-  // 이동으로 역할이 비워진 학생(이서연을 3조로)
-  must(call('moveStudent', { sid: sids[1], toTid: 'C3-3' }, admin), '역할 있는 학생 이동');
-  const pm = must(call('loadProject', {}, tok[1]), '이동 후 활동지');
-  ok(pm.members.find(m => m.name === NAMES[1]).roles.length === 0 && pm.submitRule.noLeader === true && pm.submitRule.canSubmit === false, '이동 후 역할 비움 · 새 조 규칙 적용');
+  // 팀장을 다른 조로 옮기면 원래 조가 팀장 없는 조가 된다 (김민준: 1조 팀장·데이터 엔지니어 → 3조)
+  must(call('moveStudent', { sid: sids[0], toTid: 'C3-3' }, admin), '팀장 이동');
+  const old1 = must(call('loadProject', {}, tok[1]), '원래 조 조원');
+  ok(old1.submitRule.noLeader === true && old1.submitRule.canSubmit === false, '팀장이 떠난 조는 제출 불가');
+  ok(must(call('adminOverview', {}, admin), '진행 현황').teams.find(t => t.no === '1').noLeader === true, '팀장이 떠난 조에 경고');
+  const pm = must(call('loadProject', {}, tok[0]), '이동한 팀장의 활동지');
+  ok(pm.members.find(m => m.name === NAMES[0]).roles.length === 0 && pm.submitRule.noLeader === true && pm.submitRule.canSubmit === false, '이동 후 역할 비움 · 새 조 규칙 적용');
 } catch (e) { if (e.message !== 'stop') { fails++; console.log(e.stack); } }
 
 console.log('\n통과 ' + passes + ' / 실패 ' + fails);

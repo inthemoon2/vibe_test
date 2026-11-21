@@ -171,8 +171,8 @@
     if (a === 'delg') return run(async function () { V.form.draft.groups.splice(Number(b.dataset.gi), 1); await saveDraft(); });
     if (a === 'publish') { if (!confirm(V.form.draft.groups.length + '개 조로 학생에게 공개할까요?\n공개하면 편성안은 더 고칠 수 없고, 이후에는 학생 이동으로 조정해요.')) return true; return run(async function () { V.form.data = await call('publishGroups', { cls: cls }); toast('공개했어요. 학생들이 역할을 고를 수 있어요.', 'ok'); }); }
     if (a === 'confirm') {
-      const t = V.form.data.teams, empty = t.filter(function (x) { return x.emptyRoles.length || x.noRole.length; }).length, nl = t.filter(function (x) { return x.noLeader; }).map(function (x) { return x.no + '조'; });
-      if (!confirm(cls + '반 ' + t.length + '개 조를 확정할까요?' + (empty ? '\n(빈 역할이나 역할 없는 학생이 있는 조가 ' + empty + '개 있어요)' : '') + (nl.length ? '\n팀장이 없는 조(' + nl.join(', ') + ')는 팀장을 지정할 때까지 최종 제출을 할 수 없어요.' : '') + '\n확정하면 학생 활동지가 열리고 학생은 역할을 바꿀 수 없어요.')) return true;
+      const t = V.form.data.teams, empty = t.filter(function (x) { return x.emptyRoles.length || x.noRole.length; }).length, noLeaderTeams = t.filter(function (x) { return x.noLeader; }).map(function (x) { return x.no + '조'; });
+      if (!confirm(cls + '반 ' + t.length + '개 조를 확정할까요?' + (empty ? '\n(빈 역할이나 역할 없는 학생이 있는 조가 ' + empty + '개 있어요)' : '') + (noLeaderTeams.length ? '\n팀장이 없는 조(' + noLeaderTeams.join(', ') + ')는 팀장을 지정할 때까지 최종 제출을 할 수 없어요.' : '') + '\n확정하면 학생 활동지가 열리고 학생은 역할을 바꿀 수 없어요.')) return true;
       return run(async function () { V.form.data = await call('confirmTeams', { cls: cls }); toast('조를 확정했어요.', 'ok'); });
     }
     if (a === 'editroles') { V.form.editRoles = b.dataset.sid; formRender(); return true; }
