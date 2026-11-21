@@ -183,3 +183,55 @@ details{margin:0 0 10px} summary{cursor:pointer;font-weight:600}
   .fb-card{box-shadow:none}
   .pw-slip{break-inside:avoid}
 }
+
+/* ---- v2: 조 편성 · 역할 고르기 ---- */
+.steps{display:flex;gap:6px;list-style:none;padding:0;margin:0 0 16px;flex-wrap:wrap;counter-reset:st}
+.steps li{counter-increment:st;flex:1 1 120px;background:#eef3f5;border-radius:999px;padding:4px 12px;font-size:.875rem;color:var(--mute)}
+.steps li:before{content:counter(st) ". "}
+.steps li.done{background:var(--ok-l);color:var(--ok)}
+.steps li.now{background:var(--brand);color:#fff;font-weight:700}
+.tray{margin-top:12px;padding:12px;border:2px dashed #9fb5c0;border-radius:var(--radius);background:#fafcfd}
+.nm{display:inline-flex;align-items:center;gap:4px;background:#eef3f5;border:1px solid var(--line);border-radius:999px;padding:2px 12px;margin:2px;font-size:.9375rem}
+.nm.me{background:var(--brand-l);border-color:var(--brand);font-weight:700;cursor:grab}
+.nm.big{font-size:1.05rem;padding:6px 16px}
+.nm .x{border:0;background:none;color:var(--bad);font-size:1.1rem;line-height:1;cursor:pointer;padding:0 2px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.slot{background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:12px;min-height:110px}
+.slot.full{background:#f2f4f5}
+.slot.mine{border-color:var(--brand)}
+.slot.over{border-color:var(--ok);background:var(--ok-l)}
+.slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.slot .put{margin-top:6px}
+dl.kv{margin:0} dl.kv dt{font-weight:700;margin-top:8px} dl.kv dd{margin:2px 0 0}
+.warn-t{color:var(--warn)}
+/* ---- v2: 관리자 조 편성 보드 ---- */
+.fboard{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:16px}
+.fgroup{background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:10px;min-height:120px;display:flex;flex-direction:column}
+.fgroup.unplaced{background:#fafcfd;border-style:dashed}
+.fgroup.over{border-color:var(--ok);background:var(--ok-l)}
+.fgroup.over-cap{border-color:var(--bad)}
+.fgroup-h{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.fgroup-h input{flex:1;font-weight:700;padding:4px 8px}
+.fgroup-b{flex:1;display:flex;flex-direction:column;gap:6px}
+.fchip{border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:#f7fafb;cursor:grab;line-height:1.35}
+.fchip.sel{outline:3px solid var(--brand);background:var(--brand-l)}
+.fchip.unclear{border-color:var(--warn)}
+.fteams{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+.fteams .card{margin:0}
+/* ---- v2: 발표 기록 ---- */
+.rec-card.on{border-color:var(--bad);box-shadow:0 0 0 3px var(--bad-l)}
+.rec-ctl{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+.rec-ctl .btn{margin:2px}
+.live{background:#fafcfd;border:1px solid var(--line);border-radius:8px;padding:10px 12px;max-height:340px;overflow:auto}
+.live p{margin:4px 0}
+.interim{color:var(--mute);font-style:italic}
+.segrow{border-top:1px solid var(--line);padding:8px 0}
+.seg-meta{display:flex;gap:6px;margin-bottom:4px;flex-wrap:wrap}
+.seg-meta select{width:auto;padding:2px 6px}
+.evbox{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:8px}
+.evbox>summary{cursor:pointer}
+.sbox{border-top:1px solid var(--line);padding:12px 0}
+.modal{position:fixed;inset:0;background:rgba(20,30,40,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50;overflow:auto}
+.modal-in{max-width:860px;width:100%}
+.modal pre.code{white-space:pre-wrap;max-height:40vh;overflow:auto}
+@media (max-width:640px){.fteams{grid-template-columns:1fr}}

@@ -238,7 +238,7 @@ function formation_(p) {
   stud.forEach(function (s) { const c = String(s['반']); classes[c] = classes[c] || { cls: c, n: 0, interest: 0 }; classes[c].n++; if (String(s['관심분야']).trim()) classes[c].interest++; });
   const list = Object.keys(classes).sort(function (a, b) { return Number(a) - Number(b); }).map(function (c) { const o = classes[c]; o.stage = states[c] ? String(states[c]['단계'] || '') : ''; return o; });
   const cls = p.cls ? String(parseInt(p.cls, 10)) : (list[0] ? list[0].cls : '');
-  const out = { classes: list, cls: cls, stages: V2.STAGES, roles: ROLES, roleCap: ROLES.reduce(function (a, r) { a[r] = roleCap_(r); return a; }, {}), maxRoles: V2.MAX_ROLES, teamMax: V2.TEAM_MAX };
+  const out = { classes: list, cls: cls, stages: V2.STAGES, aiReady: !!prop_('ANTHROPIC_API_KEY'), roles: ROLES, roleCap: ROLES.reduce(function (a, r) { a[r] = roleCap_(r); return a; }, {}), maxRoles: V2.MAX_ROLES, teamMax: V2.TEAM_MAX };
   if (!cls) return out;
   const st = states[cls];
   out.stage = st ? String(st['단계'] || '') : '';
@@ -606,8 +606,9 @@ function seteukList_(p) {
   const st = settings_(), rows = {}, teams = {};
   readAll_('seteuk').forEach(function (r) { rows[String(r['학번'])] = r; });
   readAll_('teams').forEach(function (t) { teams[t['팀ID']] = t; });
-  const evals = {};
+  const evals = {}, contrib = {};
   readAll_('peval').forEach(function (r) { if (String(r['단계']) === 'chg2' && r['승인'] === 'Y') evals[String(r['학번'])] = true; });
+  readAll_('content').forEach(function (r) { const f = String(r['필드']).split('@'); if (f[1] && (f[0] === 'contrib_do' || f[0] === 'contrib_learn')) contrib[r['팀ID'] + '|' + f[1] + '|' + f[0]] = String(r['값']); });
   const cls = p.cls ? String(parseInt(p.cls, 10)) : '';
   const stud = readAll_('students').filter(function (s) { return s['팀ID'] && (!cls || String(s['반']) === cls) && (!p.tid || s['팀ID'] === p.tid); })
     .sort(function (a, b) { return (Number(a['반']) - Number(b['반'])) || (Number(a['조']) - Number(b['조'])) || (String(a['학번']) < String(b['학번']) ? -1 : 1); });
@@ -617,7 +618,7 @@ function seteukList_(p) {
     teams: Object.keys(teams).filter(function (k) { return !cls || String(teams[k]['반']) === cls; }).map(function (k) { return { tid: k, cls: String(teams[k]['반']), no: String(teams[k]['조']), field: String(teams[k]['분야']) }; }).sort(function (a, b) { return (Number(a.cls) - Number(b.cls)) || (Number(a.no) - Number(b.no)); }),
     students: stud.map(function (s) {
       const r = rows[String(s['학번'])] || {}, fin = String(r['최종본'] || ''), cur = fin || String(r['AI초안'] || '');
-      return { sid: String(s['학번']), name: s['이름'], cls: String(s['반']), no: String(s['조']), tid: s['팀ID'], roles: rolesOf_(s), ai: String(r['AI초안'] || ''), final: fin, approved: r['승인'] === 'Y', approvedAt: String(r['승인일시'] || ''), chars: cur.length, bytes: neisBytes_(cur), flags: flagWords_(cur, st.schoolName), hasChange: !!evals[String(s['학번'])] };
+      return { sid: String(s['학번']), name: s['이름'], cls: String(s['반']), no: String(s['조']), tid: s['팀ID'], roles: rolesOf_(s), ai: String(r['AI초안'] || ''), final: fin, approved: r['승인'] === 'Y', approvedAt: String(r['승인일시'] || ''), chars: cur.length, bytes: neisBytes_(cur), flags: flagWords_(cur, st.schoolName), hasChange: !!evals[String(s['학번'])], contribDo: contrib[s['팀ID'] + '|' + s['이름'] + '|contrib_do'] || '', contribLearn: contrib[s['팀ID'] + '|' + s['이름'] + '|contrib_learn'] || '' };
     }),
   };
 }
@@ -673,7 +674,7 @@ function saveSeteuk_(p) {
     const ex = readAll_('seteuk').filter(function (r) { return String(r['학번']) === sid; })[0], at = now_();
     const o = { 반: s['반'], 학번: sid, 이름: s['이름'], 팀ID: s['팀ID'], 최종본: text, 글자수: text.length, 바이트: neisBytes_(text), 승인: p.approve ? 'Y' : '', 승인일시: p.approve ? at : '', 수정일시: at };
     if (ex) writeRow_('seteuk', ex._row, o); else appendObj_('seteuk', Object.assign({ AI초안: '' }, o));
-    return { ok: true, chars: text.length, bytes: neisBytes_(text), flags: flagWords_(text, settings_().schoolName), approved: !!p.approve };
+    return { ok: true, chars: text.length, bytes: neisBytes_(text), flags: flagWords_(text, settings_().schoolName), approved: !!p.approve, approvedAt: p.approve ? at : '' };
   });
 }
 

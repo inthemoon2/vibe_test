@@ -160,6 +160,7 @@ try {
   ok(saved.bytes > saved.chars, '바이트 계산');
   sl = must(call('seteukList', { cls: 3 }, admin), '세특 목록');
   ok(sl.students.length === 12 && sl.students.find(s => s.sid === sids[0]).approved, '목록·승인 상태');
+  ok(sl.students.find(s => s.sid === sids[7]).contribDo === '데이터를 모았다', '세특 참고: 나의 기여(이동한 학생)');
 
   console.log('H. 기타');
   must(call('saveSettings', { seteukLen: 400 }, admin), '세특 분량 설정');

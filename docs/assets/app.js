@@ -55,6 +55,7 @@
 
   function fatal(e) {
     if (['BAD_TOKEN', 'EXPIRED'].indexOf(e.code) >= 0) { logout(e.message); return true; }
+    if (['NO_TEAM', 'TEAM_FORMING'].indexOf(e.code) >= 0 && !S.viewOnly) { stopTimers(); S.st = null; boot(); return true; }   // 선생님이 조를 바꾼 경우
     return false;
   }
 
@@ -70,20 +71,49 @@
       '<form id="lf" autocomplete="off">' +
       '<p><label class="f" for="sid">학번</label><input id="sid" type="text" inputmode="numeric" required placeholder="예) 10101"></p>' +
       '<p><label class="f" for="nm">이름</label><input id="nm" type="text" required></p>' +
-      '<p><label class="f" for="pw">우리 조 비밀번호</label><input id="pw" type="password" required placeholder="선생님이 알려준 6자리"></p>' +
+      '<p><label class="f" for="pw">비밀번호</label><input id="pw" type="password" autocomplete="current-password" placeholder="처음이라면 비워 두세요"></p>' +
       '<p><button class="btn" style="width:100%;justify-content:center" ' + (ready ? '' : 'disabled') + '>들어가기</button></p>' +
       '</form>' +
-      '<p class="small muted">같은 조 친구들과 하나의 프로젝트 공간을 함께 씁니다. 비밀번호는 우리 조 사람에게만 알려 주세요.</p>' +
+      '<p class="small muted">처음 들어올 때는 학번과 이름만 입력하면 <b>내 비밀번호를 직접 정하는</b> 화면이 나와요. 비밀번호를 잊었다면 선생님께 초기화를 부탁하세요.</p>' +
       '<p class="small"><a href="admin.html">선생님(관리자) 페이지</a></p>' +
       '</div></div>';
     $('#lf').addEventListener('submit', async function (ev) {
       ev.preventDefault();
       const btn = $('#lf button'); btn.disabled = true; btn.textContent = '확인 중…';
       try {
-        const r = await api('login', { sid: $('#sid').value, name: $('#nm').value, pw: $('#pw').value });
+        const sid = $('#sid').value, nm = $('#nm').value.trim();
+        const r = await api('login', { sid: sid, name: nm, pw: $('#pw').value });
+        if (r.needPw) return renderSetPw(sid, nm);
         S.token = r.token; PJ.store.set('pj_token', r.token);
         await boot();
       } catch (e) { renderLogin(e.message); }
+    });
+  }
+
+  // 첫 로그인: 내 비밀번호 정하기
+  function renderSetPw(sid, nm, msg) {
+    app.innerHTML =
+      '<div class="wrap login"><div class="card">' +
+      '<h1>내 비밀번호 정하기</h1>' +
+      '<p><b>' + esc(nm) + '</b> (' + esc(sid) + ') 학생, 처음 오셨네요. 앞으로 들어올 때 쓸 비밀번호를 정해 주세요.</p>' +
+      (msg ? '<div class="banner warn" role="alert">' + esc(msg) + '</div>' : '') +
+      '<form id="pf" autocomplete="off">' +
+      '<p><label class="f" for="np">새 비밀번호 (4~20자)</label><input id="np" type="password" autocomplete="new-password" required minlength="4" maxlength="20"></p>' +
+      '<p><label class="f" for="np2">한 번 더 입력</label><input id="np2" type="password" autocomplete="new-password" required></p>' +
+      '<p><button class="btn" style="width:100%;justify-content:center">비밀번호 정하고 들어가기</button></p>' +
+      '</form><p class="small muted">다른 친구에게 알려 주지 마세요. 잊어버리면 선생님이 초기화해 줄 수 있어요.</p>' +
+      '<p class="small"><a href="#" id="back">← 처음으로</a></p></div></div>';
+    $('#back').addEventListener('click', function (e) { e.preventDefault(); renderLogin(); });
+    $('#pf').addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      const a = $('#np').value, b = $('#np2').value;
+      if (a !== b) return renderSetPw(sid, nm, '두 비밀번호가 서로 달라요.');
+      const btn = $('#pf button'); btn.disabled = true; btn.textContent = '저장 중…';
+      try {
+        const r = await api('setPassword', { sid: sid, name: nm, newPw: a });
+        S.token = r.token; PJ.store.set('pj_token', r.token);
+        await boot();
+      } catch (e) { renderSetPw(sid, nm, e.message); }
     });
   }
 
@@ -101,6 +131,15 @@
     app.innerHTML = '<div class="wrap"><p class="muted">프로젝트를 불러오는 중…</p></div>';
     try {
       if (!S.schema) S.schema = await api('schema');
+      // v2: 조가 확정되기 전에는 관심 분야 입력 → 조 공개 → 역할 고르기 화면을 먼저 보여 준다
+      if (!S.viewOnly) {
+        const ms = await api('myStatus', {}, S.token);
+        if (!ms.team || ms.team.status === '조구성') {
+          stopTimers();
+          PJ.renderSetup(app, ms, { token: S.token, onReady: boot, onLogout: function () { logout(); }, onFatal: fatal });
+          return;
+        }
+      }
       S.st = await api('loadProject', { page: S.page, field: S.focus || '', tid: VIEW || undefined }, S.token);
       S.me = S.st.me.name;
     } catch (e) { if (fatal(e)) return; app.innerHTML = '<div class="wrap"><div class="banner bad">' + esc(e.message) + '</div><p><button class="btn" onclick="location.reload()">다시 시도</button></p></div>'; return; }
@@ -175,6 +214,7 @@
     window.scrollTo(0, 0);
     if (id !== 'home' && id !== 'rpt') { $$('textarea', main).forEach(updateCount); }
     if (id === 'rpt') loadRpt();
+    if (id === 'home') loadPresFb();
     renderWho();
     if (id !== 'home' && id !== 'rpt' && pageOf(id) === S.schema.pages[S.schema.pages.length - 1]) { ensureReport(); loadFeedback(); }
     pollNow();
@@ -201,11 +241,31 @@
       '<div class="card"><h2>' + t.cls + '반 ' + t.no + '조 · ' + esc(t.field) + '</h2>' +
       '<p>이 공간은 <b>우리 조 모두가 함께</b> 쓰는 하나의 프로젝트예요. 글을 쓰면 몇 초 안에 <b>자동으로 저장</b>되고, 조원이 고친 내용도 곧 화면에 나타납니다. 같은 칸을 동시에 고치면 충돌 안내가 뜨니 먼저 상의해요.</p>' +
       '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>이름</th><th>역할</th></tr></thead><tbody>' + roleRows + '</tbody></table></div></div>' +
+      presFbHtml() +
       schedHtml() +
       '<div class="card"><h2>진행 단계</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>단계</th><th>주로 맡는 역할</th><th>작성 진행률</th></tr></thead><tbody>' + pages + '</tbody></table></div>' +
       '<p class="small muted">역할은 "주로 맡는" 기준일 뿐, 모든 조원이 어느 페이지든 함께 쓰고 고칠 수 있어요. (※ 마지막 페이지의 "나의 기여" 칸은 본인만 쓸 수 있어요.)</p></div>' +
       '<div class="card"><h2>평가 기준 미리 보기</h2><p class="small muted">아래 기준에 따라 선생님이 평가합니다. 각 단계를 쓸 때 기준을 떠올려 보세요.</p>' + rub +
       '<details><summary>' + esc(r5.name) + ' (' + r5.max + '점) — 개인별</summary>' + r5.levels.map(function (l) { return '<p class="small"><b>' + l.score + '점</b> ' + esc(l.text) + '</p>'; }).join('') + '</details></div>';
+  }
+
+  // v2: 선생님이 공개한 1차 발표 피드백 (조 전체 + 나에게 온 것)
+  function presFbHtml() {
+    const f = S.presFb;
+    if (!f || (!f.team && !f.mine)) return '';
+    const items = (f.items || []).filter(function (it) { return f.mine && String(f.mine[it.id] || '').trim(); });
+    return '<div class="card fb-card"><h2>🎤 1차 발표 피드백</h2>' +
+      (f.team ? '<h3>우리 조에게</h3><p class="pre">' + esc(f.team) + '</p>' : '') +
+      (items.length ? '<h3>' + (S.viewOnly ? '' : '나에게') + '</h3><dl class="kv">' + items.map(function (it) { return '<dt>' + esc(it.label) + '</dt><dd class="pre">' + esc(f.mine[it.id]) + '</dd>'; }).join('') + '</dl>' : '') +
+      '<p class="small muted">피드백을 반영해 발표를 고친 뒤 2차 발표를 해요.</p></div>';
+  }
+  async function loadPresFb() {
+    try {
+      const r = await api('getPresFeedback', { tid: VIEW || undefined }, S.token);
+      const changed = JSON.stringify(r) !== JSON.stringify(S.presFb);
+      S.presFb = r;
+      if (changed && S.page === 'home') { const m = $('#main'); if (m) m.innerHTML = homeHtml(); }
+    } catch (e) { fatal(e); }
   }
 
   function lockedBanner() {

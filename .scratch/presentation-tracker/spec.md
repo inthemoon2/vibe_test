@@ -15,7 +15,7 @@ Status: ready-for-agent
 
 ## 현재 구조 (기존 코드)
 
-- `web/`: GitHub Pages 정적 사이트(바닐라 JS). `admin.html`(교사), `index.html`(학생 활동지), `report.html`.
+- `docs/`: GitHub Pages 정적 사이트(바닐라 JS). `admin.html`(교사), `index.html`(학생 활동지), `report.html`.
   모든 호출은 `PJ.api(action, payload, token)` → Apps Script 웹앱 `doPost`.
 - `apps-script/Code.gs`: 구글 시트 저장, HMAC 토큰, `ACTIONS` 표(pub/s/a 권한).
 - 채점 기준 E1~E4(각 20) + E5 동료평가(20). 3차시 고정. 발표는 발표 자료 파일 업로드만 존재.
