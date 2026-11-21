@@ -188,6 +188,38 @@ try {
   gas.props.GEMINI_API_KEY = 'test-key';
   must(call('aiSeteuk', { tid }, admin), '두 키 모두 있으면 Gemini 우선');
   ok(gas.fetchLog[gas.fetchLog.length - 1].url.indexOf('generativelanguage') > 0, 'Gemini 우선');
+
+  console.log('J. 역할별 페이지와 새 역할 규칙 (티켓 14)');
+  // 1조: 김민준(PM·DE), 이서연, 임지민 / 3조: 정하준·강서윤·조이준·오건우 — 3조는 아무도 역할을 고르지 않아 팀장이 없다
+  let p0 = must(call('loadProject', {}, tok[0]), '역할 2개 학생 활동지');
+  const me0 = p0.members.find(m => m.name === NAMES[0]);
+  ok(me0.roles.length === 2 && me0.roles.indexOf('프로젝트 매니저') >= 0 && me0.roles.indexOf('데이터 엔지니어') >= 0, '역할 2개가 모두 전달됨: ' + me0.roles.join(','));
+  ok(p0.submitRule.canSubmit === true && p0.submitRule.noLeader === false, '팀장은 제출 가능');
+  const p1 = must(call('loadProject', {}, tok[1]), '데이터 엔지니어 학생');
+  ok(p1.submitRule.canSubmit === false && p1.submitRule.noLeader === false, '팀장이 있으면 다른 조원은 제출 불가');
+
+  const p3 = must(call('loadProject', {}, tok[4]), '팀장 없는 조 학생');
+  ok(p3.submitRule.noLeader === true, '팀장 없음 표시');
+  ok(p3.submitRule.canSubmit === false, '팀장 없는 조는 제출 불가');
+  expectFail(call('submitProject', {}, tok[4]), 'NO_LEADER', '팀장 없는 조 제출 거부');
+  f = must(call('formation', { cls: 3 }, admin), '현황');
+  ok(f.teams.find(t => t.no === '3').noLeader === true, '교사 조 구성 화면에 팀장 없음');
+  ok(must(call('adminOverview', {}, admin), '진행 현황').teams.find(t => t.no === '3').noLeader === true, '진행 현황에 팀장 없음');
+
+  must(call('setRoles', { sid: sids[5], roles: ['프로젝트 매니저'] }, admin), '교사가 팀장 지정');
+  ok(must(call('loadProject', {}, tok[5]), '지정된 팀장').submitRule.canSubmit === true, '지정된 팀장은 제출 가능');
+  ok(must(call('loadProject', {}, tok[4]), '다른 조원').submitRule.canSubmit === false, '다른 조원은 여전히 불가');
+
+  must(call('setRoles', { sid: sids[5], roles: [] }, admin), '팀장 다시 비움');
+  must(call('saveSettings', { leaderSubmit: false }, admin), '팀장만 제출 끄기');
+  const p3off = must(call('loadProject', {}, tok[4]), '설정 끈 뒤');
+  ok(p3off.submitRule.canSubmit === true && p3off.submitRule.noLeader === false, '설정을 끄면 팀장 없어도 누구나 제출');
+  must(call('saveSettings', { leaderSubmit: true }, admin), '설정 되돌리기');
+
+  // 이동으로 역할이 비워진 학생(이서연을 3조로)
+  must(call('moveStudent', { sid: sids[1], toTid: 'C3-3' }, admin), '역할 있는 학생 이동');
+  const pm = must(call('loadProject', {}, tok[1]), '이동 후 활동지');
+  ok(pm.members.find(m => m.name === NAMES[1]).roles.length === 0 && pm.submitRule.noLeader === true && pm.submitRule.canSubmit === false, '이동 후 역할 비움 · 새 조 규칙 적용');
 } catch (e) { if (e.message !== 'stop') { fails++; console.log(e.stack); } }
 
 console.log('\n통과 ' + passes + ' / 실패 ' + fails);

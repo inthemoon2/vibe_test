@@ -91,6 +91,7 @@
       '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>반-조</th><th>분야</th><th>상태</th><th>전체</th>' + o.pages.map(function (p) { return '<th title="' + esc(p.title) + '">' + p.no + '단계</th>'; }).join('') + '<th>발표 자료</th><th>접속 중 (위치)</th><th>마지막 수정</th><th>점검</th><th></th></tr></thead><tbody>' +
       teams.map(function (t) {
         const warn = []; if (t.nStudents < 3 || t.nStudents > 5) warn.push('<span class="badge warn">' + t.nStudents + '명</span>');
+        if (t.noLeader) warn.push('<span class="badge bad" title="팀장(프로젝트 매니저)이 없어 최종 제출을 할 수 없어요. 조 구성 탭에서 지정하세요.">팀장 없음</span>');
         return '<tr><td><b>' + esc(t.cls) + '-' + esc(t.no) + '</b></td><td>' + esc(t.field) + '</td><td>' + (t.status === '제출완료' ? '<span class="badge ok">제출 완료</span>' : t.status === '조구성' ? '<span class="badge warn">역할 고르는 중</span>' : '<span class="badge">작성 중</span>') + (t.late ? ' <span class="badge bad" title="마감 시각 이후에 제출했어요">마감 후 제출</span>' : '') + (t.scored ? ' <span class="badge brand">채점됨</span>' : '') + '</td>' +
           '<td style="min-width:90px"><div class="bar' + (t.progress === 100 ? ' full' : '') + '"><i style="width:' + t.progress + '%"></i></div><span class="small">' + t.progress + '%</span></td>' +
           o.pages.map(function (p) { const v = t.pages[p.id]; return '<td class="small">' + (v == null ? '-' : v + '%') + '</td>'; }).join('') +

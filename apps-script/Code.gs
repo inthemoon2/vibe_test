@@ -625,11 +625,11 @@ function projectState_(auth) {
   };
 }
 
-// 최종 제출은 팀장만 (설정에서 끌 수 있음). 팀장이 지정되지 않은 조는 누구나 제출할 수 있다.
+// 최종 제출은 팀장만 (설정에서 끌 수 있음). v2: 팀장이 없는 조는 교사가 팀장을 지정할 때까지 제출할 수 없다.
 function submitRule_(members, who) {
   const leaders = members.filter(isLeader_).map(function (m) { return m['이름']; });
-  const only = settings_().leaderSubmit !== '0' && leaders.length > 0;
-  return { leaderOnly: only, leaders: leaders, canSubmit: !only || leaders.indexOf(who) >= 0 };
+  const only = settings_().leaderSubmit !== '0';
+  return { leaderOnly: only, leaders: leaders, noLeader: only && !leaders.length, canSubmit: !only || leaders.indexOf(who) >= 0 };
 }
 
 function loadProject_(p, auth) {
@@ -836,6 +836,7 @@ function submitProject_(p, auth) {
     if (team['상태'] === '제출완료') throw fail_('ALREADY', '이미 제출된 프로젝트입니다.');
     const members = membersOf_(auth.tid), content = contentOf_(auth.tid), files = filesOf_(auth.tid);
     const rule = submitRule_(members, auth.n);
+    if (rule.noLeader) throw fail_('NO_LEADER', '아직 우리 조 팀장(프로젝트 매니저)이 정해지지 않아 제출할 수 없어요. 선생님께 팀장 지정을 부탁해 주세요.');
     if (!rule.canSubmit) throw fail_('NOT_LEADER', '최종 제출은 팀장(' + rule.leaders.join(', ') + ')만 할 수 있어요. 팀장에게 제출을 부탁해 주세요.');
     checkDeadline_();
     const prog = calcProgress_(content, members), at = now_();
@@ -1253,7 +1254,7 @@ function adminOverview_(p) {
       lastEdit: t['마지막수정'], lastBy: t['마지막수정자'], submitAt: t['제출일시'], hasPw: !!t['비번해시'], online: online[t['팀ID']] || [],
       nStudents: ms.length, noSid: ms.filter(function (s) { return String(s['학번']) === ''; }).length,
       reportUrl: t['보고서ID'] ? reportUrl_(t['보고서ID']) : '', reportId: t['보고서ID'], scored: !!scored[t['팀ID']],
-      ppt: !!pptSet[String(t['팀ID'])],
+      ppt: !!pptSet[String(t['팀ID'])], noLeader: st.leaderSubmit !== '0' && !ms.some(isLeader_),
       late: !!(dl && t['제출일시'] && String(t['제출일시']) > dl.at + ':00'),
     };
   });

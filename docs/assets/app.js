@@ -548,6 +548,7 @@
     if (S.st.locked || S.viewOnly) return '';
     const miss = missingList(), rule = S.st.submitRule || { canSubmit: true, leaders: [] };
     const head = '<div class="card" id="submitCard"><h2>교사에게 최종 제출하기</h2>';
+    if (rule.noLeader) return head + '<div class="banner warn"><b>아직 우리 조 팀장(프로젝트 매니저)이 정해지지 않았어요.</b><br><span class="small">최종 제출은 팀장이 해요. 선생님께 팀장을 정해 달라고 말씀드려 주세요. 그동안 6-1 "나의 기여"와 나머지 단계는 계속 쓸 수 있어요.</span></div></div>';
     if (!rule.canSubmit) return head + '<div class="banner info"><b>최종 제출은 팀장(' + esc(rule.leaders.join(', ')) + ')이 해요.</b><br><span class="small">나는 6-1 "나의 기여"에 내가 한 일을 쓰면 돼요. 마감 전에 팀장이 제출하니, 다 썼다면 팀장에게 알려 주세요. 제출 뒤에는 6-2에 발표 자료를 올려요.</span></div>' +
       (miss.length ? '<p class="small">아직 비어 있는 필수 항목이 ' + miss.length + '개 있어요. 팀장과 함께 확인해 보세요.</p>' : '') + '</div>';
     return head +
